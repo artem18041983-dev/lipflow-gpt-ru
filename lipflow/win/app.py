@@ -552,6 +552,10 @@ class Lipflow:
             return
         rois = rois_for(rec)
         if ob is None and self.settings.get("engine", "chatgpt") == "chatgpt":
+            # When local clip retention is explicitly enabled, persist the visual input before
+            # any network request so a slow/failed ChatGPT call cannot lose the diagnostic clip.
+            if self.settings.get("save_clips", False):
+                keep_clip(rois, [], "", self.settings)
             if not self.chatgpt.connected():
                 self.ui(self.hud.show, "error", "Connect ChatGPT first",
                         "Tray menu → Continue with ChatGPT", 4.0)
@@ -581,7 +585,6 @@ class Lipflow:
             self.last_paste_at = time.time()
             self.context.append(text)
             log_history(rec, [text], text, t_all, f"chatgpt:{result.model}")
-            keep_clip(rois, [text], text, self.settings)
             print(f"[lipflow] {rec.duration:.1f}s clip → ChatGPT {result.model}: {text!r} ({t_all:.2f}s)")
             self.ui(paste_text if self.opts.paste else copy_text, out if self.opts.paste else text)
             self.ui(self.hud.show, "done", "Pasted" if self.opts.paste else "Copied", text, 2.4)
