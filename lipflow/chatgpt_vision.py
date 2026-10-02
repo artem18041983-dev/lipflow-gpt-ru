@@ -190,6 +190,8 @@ class ChatGPTLipReader:
             for raw in r.iter_lines(decode_unicode=True):
                 if not raw:
                     continue
+                if isinstance(raw, bytes):
+                    raw = raw.decode("utf-8", errors="replace")
                 if raw.startswith("event:"):
                     event_name = raw[6:].strip()
                     continue
