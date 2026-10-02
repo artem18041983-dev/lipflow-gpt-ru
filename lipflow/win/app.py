@@ -18,13 +18,11 @@ from dataclasses import dataclass
 from ..camera import Camera, Recording, mouth_view
 from ..chatgpt_auth import ChatGPTAuthError, ChatGPTSession
 from ..chatgpt_vision import ChatGPTInferenceError, ChatGPTLipReader
-from ..cleanup import Cleaner
 from ..dictation import (
     HISTORY, JOIN_WINDOW, MAX_SECONDS, PREVIEW_EVERY, TAIL_SECONDS, clip_problem, keep_clip, load_settings,
     log_history, rois_for, save_settings, train_on_face,
 )
 from ..paths import HOME
-from ..vsr import LipReader
 from .hotkey import DEFAULT_KEY, KEYS, PushToTalk
 from .hud import HUD, tray_image
 from .paste import copy_text, paste_text
@@ -58,8 +56,8 @@ class Lipflow:
         self.root = tk.Tk()
         self.root.withdraw()
         self._q: "queue.Queue" = queue.Queue()
-        self.reader: LipReader | None = None
-        self.cleaner = Cleaner(opts.backend)
+        self.reader = None
+        self.cleaner = None
         self.chatgpt = ChatGPTSession()
         self.gpt_reader = ChatGPTLipReader(self.chatgpt)
         self.settings.setdefault("engine", "chatgpt")
@@ -223,6 +221,10 @@ class Lipflow:
         self.hud.show("done", "Language", value.upper(), 1.5)
 
     def _pick_engine(self, value):
+        if value == "legacy" and self.reader is None:
+            self.hud.show("error", "Legacy engine is not loaded",
+                          "Install with -Legacy and restart Lipflow in legacy mode.", 4.0)
+            return
         self.settings["engine"] = value
         save_settings(self.settings)
         self.icon.update_menu()
@@ -243,7 +245,7 @@ class Lipflow:
             label = profile.get("email") or profile.get("name") or "Connected"
             self.ui(self.icon.update_menu)
             self.ui(self.hud.show, "done", "ChatGPT connected", label, 3.0)
-        except (ChatGPTAuthError, ChatGPTInferenceError, Exception) as e:
+        except Exception as e:
             print(f"[lipflow] ChatGPT sign-in failed: {e}")
             self.ui(self.hud.show, "error", "ChatGPT sign-in failed", str(e)[:100], 5.0)
 
@@ -450,25 +452,37 @@ class Lipflow:
 
     def _load(self):
         t = time.time()
-        self.reader = LipReader(beam_size=self.opts.beam)
-        self.reader.warmup()
+        if self.settings.get("engine", "chatgpt") == "legacy":
+            from ..cleanup import Cleaner
+            from ..vsr import LipReader
+            self.reader = LipReader(beam_size=self.opts.beam)
+            self.reader.warmup()
+            self.cleaner = Cleaner(self.opts.backend)
+            print(f"[lipflow] legacy model ready in {time.time() - t:.1f}s "
+                  f"(encoder on {self.reader.enc_device}, cleanup: {self.cleaner.describe()})")
+        else:
+            print(f"[lipflow] ChatGPT mode ready in {time.time() - t:.2f}s; no local VSR loaded")
         self.loading = False
-        print(f"[lipflow] model ready in {time.time() - t:.1f}s "
-              f"(encoder on {self.reader.enc_device}, cleanup: {self.cleaner.describe()})")
         self.ui(self._set_state, "Ready")
-        if self.settings.get("whisper"):
+        if self.settings.get("engine", "chatgpt") == "legacy" and self.settings.get("whisper"):
             self.jobs.put(("whisper",))
-        if self.opts.onboard or not self.settings.get("onboarded"):
+        if self.settings.get("engine", "chatgpt") == "legacy" and (self.opts.onboard or not self.settings.get("onboarded")):
             self.ui(self.hud.hide)
             self.ui(self.show_setup)
         else:
-            self.ui(self.hud.show, "done", "Lipflow is ready", f"Hold {self.key_name} and mouth your words", 2.5)
+            body = ("Connect ChatGPT from the tray menu" if not self.chatgpt.connected()
+                    else f"Hold {self.key_name} and mouth your words")
+            self.ui(self.hud.show, "done", "Lipflow GPT RU is ready", body, 3.0)
 
     @property
     def whisper_on(self) -> bool:
         return bool(self.settings.get("whisper")) and self.av_reader is not None and self.onboarding is None
 
     def _load_whisper(self):
+        if self.settings.get("engine", "chatgpt") != "legacy":
+            self.ui(self.hud.show, "error", "Whisper mode unavailable",
+                    "ChatGPT plan sharing supports images, not audio. Use Silent mode.", 4.0)
+            return
         from .. import av
         if not av.available():
             self.ui(self.hud.show, "reading", "Whisper mode", "Downloading the audio-visual model (1.8 GB)…")
@@ -495,6 +509,12 @@ class Lipflow:
 
     def _preview(self, session: int, rec: Recording):
         if self.session != session:
+            return
+        if self.settings.get("engine", "chatgpt") == "chatgpt":
+            if rec.face_ratio < 0.4 and len(rec.ts) >= 15:
+                self.ui(self.hud.set_text, "Can't see your face…")
+            return
+        if self.reader is None:
             return
         rois = rois_for(rec)
         if rois is None:
@@ -626,7 +646,7 @@ def _already_running() -> bool:
     import ctypes
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel32.CreateMutexW.restype = ctypes.c_void_p
-    _already_running.handle = kernel32.CreateMutexW(None, False, "Local\\LipflowTray")  # held until exit
+    _already_running.handle = kernel32.CreateMutexW(None, False, "Local\\LipflowGPTTray")  # held until exit
     return ctypes.get_last_error() == 183  # ERROR_ALREADY_EXISTS
 
 

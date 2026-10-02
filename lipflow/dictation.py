@@ -43,11 +43,15 @@ def clip_problem(rec) -> "tuple[str, str] | None":
     return None
 
 
-def rois_for(rec):
+def rois_for(rec, fps: int = 25):
+    """Align a variable-rate camera recording to a steady frame rate without loading VSR/PyTorch."""
     from .face import mouth_rois
-    from .vsr import LipReader
     ts, grays, anchors = rec.snapshot()
-    idx = LipReader.resample(ts, len(ts))
+    if not ts:
+        return None
+    t = np.asarray(ts, dtype=np.float64)
+    grid = np.arange(t[0], t[-1] + 1e-9, 1.0 / fps)
+    idx = np.clip(np.searchsorted(t, grid), 0, len(ts) - 1).tolist()
     return mouth_rois([grays[i] for i in idx], [anchors[i] for i in idx])
 
 

@@ -832,22 +832,26 @@ name = "lipflow"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "anthropic" },
-    { name = "av", version = "18.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "av", version = "19.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "keyring" },
     { name = "mediapipe" },
-    { name = "mlx-lm", marker = "sys_platform == 'darwin'" },
     { name = "numpy" },
     { name = "opencv-python" },
     { name = "pillow" },
     { name = "pyjwt", extra = ["crypto"] },
     { name = "pynput" },
+    { name = "pystray", marker = "sys_platform == 'win32'" },
+    { name = "requests" },
+]
+
+[package.optional-dependencies]
+legacy = [
+    { name = "anthropic" },
+    { name = "av", version = "18.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "av", version = "19.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "mlx-lm", marker = "sys_platform == 'darwin'" },
     { name = "pyobjc-framework-avfoundation", marker = "sys_platform == 'darwin'" },
     { name = "pyobjc-framework-cocoa", marker = "sys_platform == 'darwin'" },
     { name = "pyobjc-framework-quartz", marker = "sys_platform == 'darwin'" },
-    { name = "pystray", marker = "sys_platform == 'win32'" },
-    { name = "requests" },
     { name = "sentencepiece" },
     { name = "sounddevice" },
     { name = "torch" },
@@ -860,25 +864,26 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anthropic", specifier = ">=0.40" },
-    { name = "av", specifier = ">=18.1.0" },
+    { name = "anthropic", marker = "extra == 'legacy'", specifier = ">=0.40" },
+    { name = "av", marker = "extra == 'legacy'", specifier = ">=18.1.0" },
     { name = "keyring", specifier = ">=25.6" },
     { name = "mediapipe", specifier = "==0.10.21" },
-    { name = "mlx-lm", marker = "sys_platform == 'darwin'", specifier = ">=0.31.3" },
+    { name = "mlx-lm", marker = "sys_platform == 'darwin' and extra == 'legacy'", specifier = ">=0.31.3" },
     { name = "numpy", specifier = "<2" },
     { name = "opencv-python", specifier = ">=4.9,<4.11" },
     { name = "pillow", specifier = ">=10" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.10" },
     { name = "pynput", specifier = ">=1.7.7" },
-    { name = "pyobjc-framework-avfoundation", marker = "sys_platform == 'darwin'", specifier = ">=10.3" },
-    { name = "pyobjc-framework-cocoa", marker = "sys_platform == 'darwin'", specifier = ">=10.3" },
-    { name = "pyobjc-framework-quartz", marker = "sys_platform == 'darwin'", specifier = ">=10.3" },
+    { name = "pyobjc-framework-avfoundation", marker = "sys_platform == 'darwin' and extra == 'legacy'", specifier = ">=10.3" },
+    { name = "pyobjc-framework-cocoa", marker = "sys_platform == 'darwin' and extra == 'legacy'", specifier = ">=10.3" },
+    { name = "pyobjc-framework-quartz", marker = "sys_platform == 'darwin' and extra == 'legacy'", specifier = ">=10.3" },
     { name = "pystray", marker = "sys_platform == 'win32'", specifier = ">=0.19" },
     { name = "requests", specifier = ">=2.31" },
-    { name = "sentencepiece", specifier = ">=0.2.2" },
-    { name = "sounddevice", specifier = ">=0.5.6" },
-    { name = "torch", specifier = ">=2.4" },
+    { name = "sentencepiece", marker = "extra == 'legacy'", specifier = ">=0.2.2" },
+    { name = "sounddevice", marker = "extra == 'legacy'", specifier = ">=0.5.6" },
+    { name = "torch", marker = "extra == 'legacy'", specifier = ">=2.4" },
 ]
+provides-extras = ["legacy"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9.1.1" }]
