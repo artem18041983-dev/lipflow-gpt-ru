@@ -111,6 +111,10 @@ class Lipflow:
         self._install_key()
         self._build_tray()
         self.hud.show("reading", "Lipflow", "Loading the lip-reading model…")
+        # ChatGPT mode has no local VSR warmup; pre-open the camera once so the first
+        # real dictation does not lose its opening words to DirectShow/MediaPipe cold start.
+        if self.settings.get("engine", "chatgpt") == "chatgpt":
+            self.camera.ensure_open()
         threading.Thread(target=self._worker, name="lipflow-model", daemon=True).start()
         self.jobs.put(("load",))
         self.root.after(15, self._pump)
