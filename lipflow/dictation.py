@@ -62,7 +62,7 @@ def log_history(rec, candidates, text, secs, cleanup: str):
 def keep_clip(rois, candidates, text, settings: dict):
     """Keep the mouth crops of recent dictations (local only, last KEEP_CLIPS) so accuracy changes
     can be measured on your real clips. Off switch in Settings."""
-    if not settings.get("save_clips", True):
+    if not settings.get("save_clips", False):
         return
     d = os.path.join(os.path.dirname(HISTORY), "clips", "dictations")
     os.makedirs(d, exist_ok=True)

@@ -16,6 +16,8 @@ import tkinter as tk
 from dataclasses import dataclass
 
 from ..camera import Camera, Recording, mouth_view
+from ..chatgpt_auth import ChatGPTAuthError, ChatGPTSession
+from ..chatgpt_vision import ChatGPTInferenceError, ChatGPTLipReader
 from ..cleanup import Cleaner
 from ..dictation import (
     HISTORY, JOIN_WINDOW, MAX_SECONDS, PREVIEW_EVERY, TAIL_SECONDS, clip_problem, keep_clip, load_settings,
@@ -58,6 +60,10 @@ class Lipflow:
         self._q: "queue.Queue" = queue.Queue()
         self.reader: LipReader | None = None
         self.cleaner = Cleaner(opts.backend)
+        self.chatgpt = ChatGPTSession()
+        self.gpt_reader = ChatGPTLipReader(self.chatgpt)
+        self.settings.setdefault("engine", "chatgpt")
+        self.settings.setdefault("language", "ru")
         self.jobs: "queue.Queue" = queue.Queue()
         self.session = 0          # bumps on every start/cancel so stale previews are dropped
         self.preview_busy = False
@@ -144,10 +150,32 @@ class Lipflow:
             return Item(key_label(name), lambda icon, item: self.ui(self._pick_key, name),
                         checked=lambda item: self.opts.key == name, radio=True)
 
+        def pick_language(value, label):
+            return Item(label, lambda icon, item: self.ui(self._pick_language, value),
+                        checked=lambda item: self.settings.get("language", "ru") == value, radio=True)
+
+        def pick_engine(value, label):
+            return Item(label, lambda icon, item: self.ui(self._pick_engine, value),
+                        checked=lambda item: self.settings.get("engine", "chatgpt") == value, radio=True)
+
         menu = Menu(
             Item(lambda item: self.state_text, None, enabled=False),
             Item(lambda item: f"Hold {self.key_name} to dictate, double-tap for hands-free", None, enabled=False),
-            Item(lambda item: f"Cleanup: {self.cleaner.describe()}", None, enabled=False),
+            Item(lambda item: f"ChatGPT: {self.chatgpt.label()}", None, enabled=False),
+            Item(lambda item: f"Recognition: {self.settings.get('engine', 'chatgpt')} / {self.settings.get('language', 'ru').upper()}", None, enabled=False),
+            Item("Continue with ChatGPT", lambda icon, item: self.ui(self._chatgpt_signin)),
+            Item("Disconnect ChatGPT", lambda icon, item: self.ui(self._chatgpt_signout),
+                 enabled=lambda item: self.chatgpt.connected()),
+            Menu.SEPARATOR,
+            Item("Language", Menu(
+                pick_language("ru", "Russian"),
+                pick_language("en", "English"),
+                pick_language("auto", "Auto RU / EN"),
+            )),
+            Item("Recognition engine", Menu(
+                pick_engine("chatgpt", "ChatGPT Vision"),
+                pick_engine("legacy", "Original Lipflow (English)"),
+            )),
             Menu.SEPARATOR,
             Item("Copy last dictation", lambda icon, item: self.ui(self._copy_last)),
             Item("Practice && train more…", lambda icon, item: self.ui(self.show_setup, "practice")),
@@ -157,7 +185,7 @@ class Lipflow:
             Item("Push-to-talk key", Menu(*[pick_key(k) for k in KEYS])),
             toggle("whisper", False, then=lambda: self.ui(self._whisper_changed)),
             toggle("use_context"),
-            toggle("save_clips"),
+            toggle("save_clips", False),
             Item("Start with Windows", lambda icon, item: self._toggle_autostart(),
                  checked=lambda item: self._autostart_enabled()),
             Menu.SEPARATOR,
@@ -187,6 +215,44 @@ class Lipflow:
     def _copy_last(self):
         if self.last_output:
             copy_text(self.last_output)
+
+    def _pick_language(self, value):
+        self.settings["language"] = value
+        save_settings(self.settings)
+        self.icon.update_menu()
+        self.hud.show("done", "Language", value.upper(), 1.5)
+
+    def _pick_engine(self, value):
+        self.settings["engine"] = value
+        save_settings(self.settings)
+        self.icon.update_menu()
+        label = "ChatGPT Vision" if value == "chatgpt" else "Original Lipflow"
+        self.hud.show("done", "Recognition engine", label, 1.5)
+
+    def _chatgpt_signin(self):
+        self.hud.show("reading", "ChatGPT", "Opening secure sign-in in your browser…")
+        threading.Thread(target=self._chatgpt_signin_worker, name="chatgpt-signin", daemon=True).start()
+
+    def _chatgpt_signin_worker(self):
+        try:
+            profile = self.chatgpt.sign_in()
+            models = self.chatgpt.models()
+            if models:
+                self.settings["chatgpt_model"] = models[0]["slug"]
+                save_settings(self.settings)
+            label = profile.get("email") or profile.get("name") or "Connected"
+            self.ui(self.icon.update_menu)
+            self.ui(self.hud.show, "done", "ChatGPT connected", label, 3.0)
+        except (ChatGPTAuthError, ChatGPTInferenceError, Exception) as e:
+            print(f"[lipflow] ChatGPT sign-in failed: {e}")
+            self.ui(self.hud.show, "error", "ChatGPT sign-in failed", str(e)[:100], 5.0)
+
+    def _chatgpt_signout(self):
+        self.chatgpt.sign_out()
+        self.settings.pop("chatgpt_model", None)
+        save_settings(self.settings)
+        self.icon.update_menu()
+        self.hud.show("done", "ChatGPT disconnected", "", 2.0)
 
     def _pick_camera(self, value):
         self.settings["camera"] = value
@@ -454,6 +520,41 @@ class Lipflow:
             self.ui(self.hud.show, "error", problem[0], problem[1], 2.2)
             return
         rois = rois_for(rec)
+        if ob is None and self.settings.get("engine", "chatgpt") == "chatgpt":
+            if not self.chatgpt.connected():
+                self.ui(self.hud.show, "error", "Connect ChatGPT first",
+                        "Tray menu → Continue with ChatGPT", 4.0)
+                return
+            self.ui(self.hud.set_text, "Reading lips with ChatGPT…")
+            ctx = self.ctx
+            try:
+                result = self.gpt_reader.read(
+                    rois,
+                    language=self.settings.get("language", "ru"),
+                    context=" ".join(self.context[-3:]),
+                    names=ctx.names if ctx else None,
+                    model=self.settings.get("chatgpt_model"),
+                )
+            except ChatGPTInferenceError as e:
+                print(f"[lipflow] ChatGPT lip reading failed: {e}")
+                self.ui(self.hud.show, "error", "ChatGPT could not read that", str(e)[:100], 5.0)
+                return
+            text = result.text
+            if not text:
+                self.ui(self.hud.show, "error", "Couldn't read that", "Try again, a little slower", 2.2)
+                return
+            t_all = time.time() - t0
+            out = (" " if self.last_paste_at and time.time() - self.last_paste_at < JOIN_WINDOW else "") + text
+            self.last_output = text
+            self.last_paste_at = time.time()
+            self.context.append(text)
+            log_history(rec, [text], text, t_all, f"chatgpt:{result.model}")
+            keep_clip(rois, [text], text, self.settings)
+            print(f"[lipflow] {rec.duration:.1f}s clip → ChatGPT {result.model}: {text!r} ({t_all:.2f}s)")
+            self.ui(paste_text if self.opts.paste else copy_text, out if self.opts.paste else text)
+            self.ui(self.hud.show, "done", "Pasted" if self.opts.paste else "Copied", text, 2.4)
+            return
+
         enc = self.reader.encode(rois)
         t_enc = time.time() - t0
         if ob is not None:  # practice clip: keep it with its known text, don't paste
