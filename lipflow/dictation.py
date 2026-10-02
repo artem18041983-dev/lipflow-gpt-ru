@@ -22,7 +22,8 @@ JOIN_WINDOW = 45.0  # dictations this close together get a separating space
 
 def load_settings() -> dict:
     try:
-        return json.load(open(SETTINGS))
+        with open(SETTINGS, encoding="utf-8-sig") as f:
+            return json.load(f)
     except (OSError, ValueError):
         return {}
 
