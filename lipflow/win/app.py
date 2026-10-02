@@ -244,7 +244,11 @@ class Lipflow:
             profile = self.chatgpt.sign_in()
             models = self.chatgpt.models()
             if models:
-                self.settings["chatgpt_model"] = models[0]["slug"]
+                available = {m["slug"] for m in models}
+                current = self.settings.get("chatgpt_model")
+                preferred = ("gpt-6.1-sol", "gpt-6-sol", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5")
+                if current not in available or "astra" in (current or "").lower():
+                    self.settings["chatgpt_model"] = next((m for m in preferred if m in available), None)
                 save_settings(self.settings)
             label = profile.get("email") or profile.get("name") or "Connected"
             self.ui(self.icon.update_menu)
