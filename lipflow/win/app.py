@@ -556,6 +556,10 @@ class Lipflow:
             # any network request so a slow/failed ChatGPT call cannot lose the diagnostic clip.
             if self.settings.get("save_clips", False):
                 keep_clip(rois, [], "", self.settings)
+            if self.settings.get("capture_only", False):
+                print(f"[lipflow] diagnostic clip saved ({rec.duration:.2f}s, {len(rec.ts)} frames)")
+                self.ui(self.hud.show, "done", "Diagnostic clip saved", f"{rec.duration:.1f}s · {len(rec.ts)} frames", 2.4)
+                return
             if not self.chatgpt.connected():
                 self.ui(self.hud.show, "error", "Connect ChatGPT first",
                         "Tray menu → Continue with ChatGPT", 4.0)
