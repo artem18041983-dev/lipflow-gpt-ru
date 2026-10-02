@@ -353,7 +353,7 @@ class Lipflow:
         self.hands_free = hands_free
         from ..context import Context, capture
         # the app you're typing into is in front right now
-        self.ctx = capture() if self.settings.get("use_context", True) else Context()
+        self.ctx = capture() if self.settings.get("use_context", False) else Context()
         rec = self.camera.start_recording()
         if self.whisper_on:
             self.mic.start()
@@ -558,12 +558,13 @@ class Lipflow:
                 return
             self.ui(self.hud.set_text, "Reading lips with ChatGPT…")
             ctx = self.ctx
+            use_context = self.settings.get("use_context", False)
             try:
                 result = self.gpt_reader.read(
                     rois,
                     language=self.settings.get("language", "ru"),
-                    context=" ".join(self.context[-3:]),
-                    names=ctx.names if ctx else None,
+                    context=" ".join(self.context[-3:]) if use_context else "",
+                    names=ctx.names if use_context and ctx else None,
                     model=self.settings.get("chatgpt_model"),
                 )
             except ChatGPTInferenceError as e:
