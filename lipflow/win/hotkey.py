@@ -5,6 +5,8 @@ skipped, so they can't be mistaken for a shortcut.
 """
 from __future__ import annotations
 
+import time
+
 from pynput import keyboard
 
 from ..ptt import PushToTalkState
@@ -23,6 +25,7 @@ MODIFIERS = {K.ctrl, K.ctrl_l, K.ctrl_r, K.alt, K.alt_l, K.alt_r, K.alt_gr, K.sh
 DEFAULT_KEY = "right_control"
 LLKHF_INJECTED = 0x10
 MASK_VK = 0xE8  # unassigned: tapping it while Alt is held stops Alt's release from opening app menus
+REPEAT_RECOVERY = 0.7  # after this silence, treat a new key-down as a new tap even if key-up was lost
 
 
 class PushToTalk(PushToTalkState):
@@ -32,6 +35,8 @@ class PushToTalk(PushToTalkState):
         super().__init__(on_start, on_stop, on_cancel)
         self.keys = KEYS[key]
         self._listener = None
+        self._target_down = False
+        self._last_target_event = 0.0
 
     def install(self):
         def filt(msg, data):
@@ -47,14 +52,29 @@ class PushToTalk(PushToTalkState):
         if self._listener is not None:
             self._listener.stop()
 
-    # Called on the listener thread with pynput Key / KeyCode objects.
+    # Windows uses key-down toggling instead of hold/release. Some keyboards/hooks can lose
+    # a modifier key-up event; depending on key-up made recordings stick indefinitely.
+    # Auto-repeat is ignored while the key is physically down. If key-up was lost, a new
+    # key-down after REPEAT_RECOVERY is treated as a fresh tap.
     def press(self, key):
         if key in self.keys:
-            if not self.down and any(k in (K.alt_l, K.alt_r, K.alt_gr) for k in self.keys):
+            now = time.monotonic()
+            if self._target_down and now - self._last_target_event < REPEAT_RECOVERY:
+                self._last_target_event = now
+                return
+            self._target_down = True
+            self._last_target_event = now
+            if any(k in (K.alt_l, K.alt_r, K.alt_gr) for k in self.keys):
                 self._mask_alt()
-            self.key_down()
-        elif key not in MODIFIERS:
-            self.other_key(key == K.esc)
+            if self.active:
+                self.active = self.hands_free = False
+                self.on_stop()
+            else:
+                self.active = self.hands_free = True
+                self.on_start(hands_free=True)
+        elif key == K.esc and self.active:
+            self.active = self.hands_free = False
+            self.on_cancel()
 
     @staticmethod
     def _mask_alt():
@@ -65,4 +85,4 @@ class PushToTalk(PushToTalkState):
 
     def release(self, key):
         if key in self.keys:
-            self.key_up()
+            self._target_down = False
