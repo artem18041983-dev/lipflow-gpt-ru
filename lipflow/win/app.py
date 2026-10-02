@@ -372,7 +372,7 @@ class Lipflow:
         self._set_icon(False)
         self.hud.show("reading", "Reading your lips", self.hud.body_text)
         token = self.session
-        self.root.after(int(TAIL_SECONDS * 1000), lambda: self._finish_stop(token))
+        self._finish_stop(token)
 
     def _finish_stop(self, token):
         if self.pending_stop != token:
@@ -535,6 +535,7 @@ class Lipflow:
             self.ui(self.hud.set_text, text.lower())
 
     def _final(self, rec: Recording):
+        print(f"[lipflow] final entered ({rec.duration:.2f}s, {len(rec.ts)} frames, face={rec.face_ratio:.0%})")
         t0 = time.time()
         ob = self.onboarding  # the setup window can be closed meanwhile on the tk thread
         problem = clip_problem(rec)
