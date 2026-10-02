@@ -1,4 +1,4 @@
-"""Lipflow for Windows: a tray icon. Hold a key, mouth the words, let go — the text appears at your cursor.
+"""Lipflow for Windows: a tray icon. Tap the key to start, mouth the words, tap again to finish.
 
 Threads: tk owns the main thread (overlay, setup window); pynput's hook thread reports the key;
 pystray runs the tray menu on its own thread; one model thread reads lips. Everything that touches
@@ -162,7 +162,7 @@ class Lipflow:
 
         menu = Menu(
             Item(lambda item: self.state_text, None, enabled=False),
-            Item(lambda item: f"Hold {self.key_name} to dictate, double-tap for hands-free", None, enabled=False),
+            Item(lambda item: f"Tap {self.key_name} to start · tap again to finish", None, enabled=False),
             Item(lambda item: f"ChatGPT: {self.chatgpt.label()}", None, enabled=False),
             Item(lambda item: f"Recognition: {self.settings.get('engine', 'chatgpt')} / {self.settings.get('language', 'ru').upper()}", None, enabled=False),
             Item("Continue with ChatGPT", lambda icon, item: self.ui(self._chatgpt_signin)),
@@ -278,7 +278,7 @@ class Lipflow:
         save_settings(self.settings)
         self._install_key()
         self.icon.update_menu()
-        self.hud.show("done", "Push-to-talk key", f"Hold {self.key_name} to dictate", 2.0)
+        self.hud.show("done", "Push-to-talk key", f"Tap {self.key_name} to start · tap again to finish", 2.0)
 
     def _whisper_changed(self):
         if self.settings.get("whisper") and self.av_reader is None and not self.loading:
@@ -346,7 +346,7 @@ class Lipflow:
         if self.pending_stop is not None:  # pressed again during the tail: finish the last one now
             self._finish_stop(self.pending_stop)
         if hands_free and self.camera.recording is not None:
-            self.hands_free = True  # the second tap of a double-tap: keep the recording going
+            self.hands_free = True  # Windows toggle mode: recording stays active until the next tap
             self.hud.show("listening", "Hands-free · tap to finish", self.hud.body_text)
             return
         self.session += 1
@@ -481,7 +481,7 @@ class Lipflow:
             self.ui(self.show_setup)
         else:
             body = ("Connect ChatGPT from the tray menu" if not self.chatgpt.connected()
-                    else f"Hold {self.key_name} and mouth your words")
+                    else f"Tap {self.key_name} to finish")
             self.ui(self.hud.show, "done", "Lipflow GPT RU is ready", body, 3.0)
 
     @property
@@ -675,6 +675,6 @@ def run(opts: Options):
     lf.start()
     import signal
     signal.signal(signal.SIGINT, lambda *a: lf.ui(lf.quit))  # tk would swallow Ctrl-C in its callbacks
-    print(f"[lipflow] hold {lf.key_name} and mouth your words · double-tap for hands-free · Esc cancels · Ctrl-C quits")
+    print(f"[lipflow] tap {lf.key_name} to start · tap again to finish · Esc cancels · Ctrl-C quits")
     lf.root.mainloop()
     os._exit(0)  # the hook, tray and model threads don't need a clean shutdown
