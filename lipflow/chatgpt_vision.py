@@ -100,14 +100,17 @@ class ChatGPTLipReader:
 
     def _candidate_models(self, requested: str | None = None) -> list[str]:
         models = [m["slug"] for m in self.session.models()]
-        if requested and requested in models:
-            models.remove(requested)
-            models.insert(0, requested)
+        models = [m for m in models if "astra" not in m.lower()]
+        if requested:
+            if requested not in models:
+                return []
+            return [requested]
         preferred = [
-            "gpt-6-astra",
             "gpt-6.1-sol",
             "gpt-6-sol",
             "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "gpt-5.6-luna",
         ]
         ordered = []
         for p in preferred:
@@ -115,7 +118,7 @@ class ChatGPTLipReader:
                 ordered.append(p)
         for slug in models:
             low = slug.lower()
-            if ("gpt" in low or "astra" in low or "sol" in low) and slug not in ordered:
+            if "gpt" in low and slug not in ordered:
                 ordered.append(slug)
         return ordered[:8]
 
