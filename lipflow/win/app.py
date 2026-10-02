@@ -331,6 +331,7 @@ class Lipflow:
 
     # -- push-to-talk (tk thread) -------------------------------------------------------------
     def on_start(self, hands_free: bool):
+        print(f"[lipflow] PTT start (key={self.opts.key}, hands_free={hands_free})")
         if self.loading:
             self.hud.show("error", "Still loading", "The model is almost ready…", hide_after=1.5)
             return
@@ -354,6 +355,7 @@ class Lipflow:
         threading.Thread(target=self._preview_loop, args=(self.session, rec), daemon=True).start()
 
     def on_stop(self):
+        print(f"[lipflow] PTT stop (key={self.opts.key})")
         self.hands_free = False
         if self.camera.recording is None:
             return
