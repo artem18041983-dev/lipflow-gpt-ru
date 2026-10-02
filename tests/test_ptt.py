@@ -65,27 +65,40 @@ def test_escape_cancels_hands_free():
     assert log[-1] == ("cancel", False) and not ptt.hands_free
 
 
-def test_windows_keys_map_through_pynput(monkeypatch):
-    from lipflow.win.hotkey import KEYS, PushToTalk
+def test_windows_keys_toggle_on_key_down(monkeypatch):
+    from lipflow.win.hotkey import KEYS, PushToTalk, REPEAT_RECOVERY
     assert Key.ctrl_r in KEYS["right_control"] and Key.alt_gr in KEYS["right_alt"]
     ptt, log = make(PushToTalk, "right_control")
-    ptt.press(Key.ctrl_r); ptt.press(Key.ctrl_r)  # key repeat
-    ptt.press(Key.shift)                           # a modifier alone is not a shortcut
-    ptt.release(Key.shift)
-    ptt.down_at -= 1.0                             # held for a second
+    ptt.press(Key.ctrl_r)
+    ptt.press(Key.ctrl_r)  # auto-repeat while physically down is ignored
+    assert log == [("start", True)]
     ptt.release(Key.ctrl_r)
-    assert log == [("start", False), ("stop",)]
+    ptt.press(Key.ctrl_r)
+    assert log == [("start", True), ("stop",)]
+
+    # If Windows loses key-up, a later key-down still recovers and toggles.
     ptt, log = make(PushToTalk, "right_control")
-    ptt.press(Key.ctrl_r); ptt.press(KeyCode.from_char("c"))
-    assert log == [("start", False), ("cancel", False)]
+    ptt.press(Key.ctrl_r)
+    ptt._last_target_event -= REPEAT_RECOVERY + 0.1
+    ptt.press(Key.ctrl_r)
+    assert log == [("start", True), ("stop",)]
+
+    # Non-PTT keys do not cancel toggle recording; Esc still does.
+    ptt, log = make(PushToTalk, "right_control")
+    ptt.press(Key.ctrl_r)
+    ptt.press(KeyCode.from_char("c"))
+    assert log == [("start", True)]
+    ptt.press(Key.esc)
+    assert log == [("start", True), ("cancel", False)]
 
 
 def test_windows_altgr_fake_ctrl_does_not_cancel(monkeypatch):
     from lipflow.win.hotkey import PushToTalk
     monkeypatch.setattr(PushToTalk, "_mask_alt", staticmethod(lambda: None))  # would inject a real key
     ptt, log = make(PushToTalk, "right_alt")
-    ptt.press(Key.ctrl_l); ptt.press(Key.alt_gr)   # AltGr = a synthetic Left Ctrl + Right Alt
-    ptt.press(Key.ctrl_l); ptt.press(Key.alt_gr)   # both repeat while held
-    ptt.down_at -= 1.0
+    ptt.press(Key.ctrl_l); ptt.press(Key.alt_gr)   # AltGr = synthetic Left Ctrl + Right Alt
+    ptt.press(Key.ctrl_l); ptt.press(Key.alt_gr)   # repeat is ignored
+    assert log == [("start", True)]
     ptt.release(Key.alt_gr)
-    assert log == [("start", False), ("stop",)]
+    ptt.press(Key.alt_gr)
+    assert log == [("start", True), ("stop",)]
