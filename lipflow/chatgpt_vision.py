@@ -37,14 +37,14 @@ def _as_uint8(frame: np.ndarray) -> np.ndarray:
     return np.clip(a, 0, 255).astype(np.uint8)
 
 
-def make_contact_sheets(rois: np.ndarray, max_frames: int = 24) -> list[str]:
-    """Return up to two chronological PNG contact sheets as data URLs."""
+def make_contact_sheets(rois: np.ndarray, max_frames: int = 72) -> list[str]:
+    """Return chronological PNG contact sheets while preserving useful lip-motion timing."""
     if rois is None or len(rois) == 0:
         return []
     n = min(max_frames, len(rois))
     indexes = np.linspace(0, len(rois) - 1, n, dtype=int)
     chosen = [_as_uint8(rois[i]) for i in indexes]
-    chunks = [chosen[:12], chosen[12:24]]
+    chunks = [chosen[i:i + 12] for i in range(0, len(chosen), 12)]
     urls = []
     for chunk_no, frames in enumerate(chunks):
         if not frames:
